@@ -1,8 +1,8 @@
 # Dolphin
 
 [Paper](https://arxiv.org/abs/2503.20212)
-[Github](https://github.com/DataoceanAI/Dolphin)
-[Huggingface](https://huggingface.co/DataoceanAI)
+[GitHub](https://github.com/DataoceanAI/Dolphin)
+[Hugging Face](https://huggingface.co/DataoceanAI)
 [Modelscope](https://www.modelscope.cn/organization/DataoceanAI)
 
 Dolphin is a multilingual, multitask ASR model developed through a collaboration between Dataocean AI and Tsinghua University. It supports 40 Eastern languages across East Asia, South Asia, Southeast Asia, and the Middle East, while also supporting 22 Chinese dialects. It is trained on over 210,000 hours of data, which includes both DataoceanAI's proprietary datasets and open-source datasets. The model can perform speech recognition, voice activity detection (VAD), segmentation, and language identification (LID).
