@@ -1,6 +1,7 @@
 # encoding: utf8
 
 import os
+import re
 import yaml
 import logging
 import dataclasses
@@ -24,6 +25,7 @@ from espnet.nets.scorers.length_bonus import LengthBonus
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.bin.s2t_inference import (Speech2Text, ListOfHypothesis, ScoreFilter)
+from dolphin.dolphin_score_filter import DolphineScoreFilter
 
 from .constants import (SPEECH_LENGTH, SAMPLE_RATE, FIRST_TIME_SYMBOL, LAST_TIME_SYMBOL, NOTIME_SYMBOL,
                         FIRST_LANG_SYMBOL, LAST_LANG_SYMBOL, FIRST_REGION_SYMBOL, LAST_REGION_SYMBOL)
@@ -86,7 +88,7 @@ class DolphinSpeech2Text(Speech2Text):
         scorers = dict(
             decoder=decoder,
             length_bonus=LengthBonus(len(token_list)),
-            scorefilter=ScoreFilter(
+            scorefilter=DolphineScoreFilter(
                 notimestamps=token_list.index(NOTIME_SYMBOL),
                 first_time=token_list.index(FIRST_TIME_SYMBOL),
                 last_time=token_list.index(LAST_TIME_SYMBOL),
@@ -300,6 +302,7 @@ class DolphinSpeech2Text(Speech2Text):
         region_sym: Optional[str] = None,
         predict_time: Optional[bool] = None,
         padding_speech: bool = True,
+        detect_language_first: bool = True
     ) -> TranscribeResult:
         """Inference for a single utterance.
 
@@ -312,6 +315,10 @@ class DolphinSpeech2Text(Speech2Text):
             region_sym: region symbol (e.g. CN)
             predict_time: whether to predict timestamps
             padding_speech: whether to padding speech to 30 seconds, default is true
+            detect_language_first: whether to detect language first, else it will do the decoding process directly. 
+                                   If it is False, it will save time for sending audio to encoder once, and directly
+                                   get the decoding results including the lang and the region auto-regressivelly.
+                                   default is true.
 
         Returns:
             TranscribeResult
@@ -320,22 +327,25 @@ class DolphinSpeech2Text(Speech2Text):
 
         predict_time = predict_time if predict_time is not None else self.predict_time
 
+        self.beam_search.scorers["scorefilter"].predict_time = predict_time
+
         if all([lang_sym, region_sym]):
             lang_id = self.converter.token2id[f"<{lang_sym}>"]
             region_id = self.converter.token2id[f"<{region_sym}>"]
+        elif detect_language_first == False:
+            lang_id, region_id = None, None
         else:
             lang_id, region_id = self.detect_language(speech, lang_sym)
 
         task_id = self.converter.token2id["<asr>"]
-        notime_id = self.converter.token2id[NOTIME_SYMBOL]
-        first_time_id = self.converter.token2id[FIRST_TIME_SYMBOL]
 
         # Prepare hyp_primer
-        hyp_primer = [self.s2t_model.sos, lang_id, region_id, task_id]
-        if predict_time:
-            hyp_primer.append(first_time_id)
+        if lang_id is None and region_id is None:
+            logger.info('Do the decoding process directly without detecting language first.')
+            hyp_primer = [self.s2t_model.sos]
         else:
-            hyp_primer.append(notime_id)
+            hyp_primer = [self.s2t_model.sos, lang_id, region_id, task_id]
+        
 
         self.beam_search.set_hyp_primer(hyp_primer)
 
@@ -376,7 +386,9 @@ class DolphinSpeech2Text(Speech2Text):
         # c. Pass the encoder result to the beam search
         results = self._decode_single_sample(enc[0])
         text, _, _, text_nospecial, _ = results[0]
-
-        lang, region = self.converter.ids2tokens([lang_id, region_id])
+        if lang_id is None and region_id is None:
+            lang, region = re.findall("<.*?>", text)[:2]
+        else:
+            lang, region = self.converter.ids2tokens([lang_id, region_id])
         ret = TranscribeResult(text, text_nospecial, lang[1:-1], region[1:-1])
         return ret
