@@ -63,7 +63,7 @@ MODELS = {
     "small": {
         "model_id": "DataoceanAI/dolphin-small",
         "download_url": "http://so-algorithm-prod.oss-cn-beijing.aliyuncs.com/models/dolphin/small.pt",
-        "sha256": "e5a52b9a713d294d5a2d929f5e7f6a18d951a8155ede80f935a74b76b0432b17",
+        "sha256": "4a0c6c636657121ec2a2b656e97e45b29a8b29c92fa3998006e02ab146d8ac51",
         "config": {
             "encoder": {
                 "output_size": 768,
@@ -150,7 +150,7 @@ def load_model(
         device = detect_device()
         logger.info(f"auto detect device: {device}")
 
-    model_config = MODELS[model_name]["config"]
+    model_config = kwargs.get("model_config") or MODELS[model_name]["config"]
     train_cfg_file = join(dirname(abspath(__file__)), "assets/config.yaml")
     with open(train_cfg_file, "r", encoding="utf-8") as f:
         train_cfg = yaml.safe_load(f)
