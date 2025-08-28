@@ -171,9 +171,6 @@ def load_model(
         train_cfg = yaml.safe_load(f)
         train_cfg["encoder_conf"].update(**model_config["encoder"])
         train_cfg["decoder_conf"].update(**model_config["decoder"])
-
-    if isinstance(model_dir, str):
-        model_dir = Path(model_dir)
     
     if model_dir is None:
         model_dir = modelscope.snapshot_download(
@@ -181,6 +178,9 @@ def load_model(
             allow_file_pattern=f"{model_name}.pt",
             local_dir=model_dir,
         )
+    
+    if isinstance(model_dir, str):
+        model_dir = Path(model_dir)
     
     model_file = model_dir / f"{model_name}.pt"
     # download_model = True
