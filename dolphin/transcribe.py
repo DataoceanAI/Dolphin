@@ -23,7 +23,7 @@ import numpy as np
 from pathlib import Path
 from argparse import Namespace
 from os.path import dirname, join, abspath, join
-from distutils.util import strtobool
+# from distutils.util import strtobool
 from typing import Union, Optional, Tuple, List
 
 import torch
@@ -82,6 +82,21 @@ MODELS = {
 }
 
 
+def strtobool(val: str) -> bool:
+    """Convert a string representation of truth to true (1) or false (0).
+
+    True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
+    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if
+    'val' is anything else.
+    """
+    val = val.lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return True
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return False
+    else:
+        raise ValueError(f"invalid truth value {val!r}")
+
 def str2bool(value: str) -> bool:
 
     return bool(strtobool(value))
@@ -130,8 +145,8 @@ def seconds_to_hms(total_seconds: int):
 
 
 def load_model(
-    model_name: str,
-    model_dir: Union[Path, str],
+    model_name: str = "small",
+    model_dir: Union[Path, str] = None,
     device: Optional[Union[str, torch.device]] = None,
     **kwargs
 ) -> DolphinSpeech2Text:
@@ -159,27 +174,34 @@ def load_model(
 
     if isinstance(model_dir, str):
         model_dir = Path(model_dir)
-
-    model_file = model_dir / f"{model_name}.pt"
-    download_model = True
-    disable_model_hash_check = kwargs.get("disable_model_hash_check", False)
-    if model_file.exists() and not disable_model_hash_check:
-        with open(model_file, "rb") as f:
-            model_bytes = f.read()
-        if hashlib.sha256(model_bytes).hexdigest() == MODELS[model_name]["sha256"]:
-            download_model = False
-        else:
-            model_file.unlink(missing_ok=True)
-            logger.warning("model SHA256 chechsum mismatch, redownload model...")
-
-    if download_model and not disable_model_hash_check:
-        # Download model
-        model_dir.mkdir(exist_ok=True)
-        _download_from_modelscope(
+    
+    if model_dir is None:
+        model_dir = modelscope.snapshot_download(
             model_id=MODELS[model_name]["model_id"],
-            local_dir=model_dir,
             allow_file_pattern=f"{model_name}.pt",
+            local_dir=model_dir,
         )
+    
+    model_file = model_dir / f"{model_name}.pt"
+    # download_model = True
+    # disable_model_hash_check = kwargs.get("disable_model_hash_check", False)
+    # if model_file.exists() and not disable_model_hash_check:
+    #     with open(model_file, "rb") as f:
+    #         model_bytes = f.read()
+    #     if hashlib.sha256(model_bytes).hexdigest() == MODELS[model_name]["sha256"]:
+    #         download_model = False
+    #     else:
+    #         model_file.unlink(missing_ok=True)
+    #         logger.warning("model SHA256 chechsum mismatch, redownload model...")
+
+    # if download_model and not disable_model_hash_check:
+    #     # Download model
+    #     model_dir.mkdir(exist_ok=True)
+    #     _download_from_modelscope(
+    #         model_id=MODELS[model_name]["model_id"],
+    #         local_dir=model_dir,
+    #         allow_file_pattern=f"{model_name}.pt",
+    #     )
 
     model = DolphinSpeech2Text(
         s2t_train_config=train_cfg,
@@ -192,13 +214,13 @@ def load_model(
     return model
 
 
-def _download_from_modelscope(model_id: str, local_dir: str, allow_file_pattern: str):
-    modelscope.snapshot_download(
-        model_id=model_id,
-        local_dir=local_dir,
-        allow_file_pattern=allow_file_pattern,
-        repo_type="model",
-    )
+# def _download_from_modelscope(model_id: str, local_dir: str, allow_file_pattern: str):
+#     modelscope.snapshot_download(
+#         model_id=model_id,
+#         local_dir=local_dir,
+#         allow_file_pattern=allow_file_pattern,
+#         repo_type="model",
+#     )
 
 
 def validate_lang_region(lang_sym: str, region_sym: str):
@@ -241,9 +263,10 @@ def transcribe_long(
     validate_lang_region(lang_sym, region_sym)
 
     logging.info("download vad model")
-    vad_model_dir = Path(os.path.expanduser("~/.cache/dolphin/speech_fsmn_vad"))
-    vad_model_dir.mkdir(exist_ok=True)
-    _download_from_modelscope(VAD_MODEL, vad_model_dir, None)
+    vad_model_dir = modelscope.snapshot_download(model_id=VAD_MODEL)
+    # vad_model_dir = Path(os.path.expanduser("~/.cache/dolphin/speech_fsmn_vad"))
+    # vad_model_dir.mkdir(exist_ok=True)
+    # _download_from_modelscope(VAD_MODEL, vad_model_dir, None)
 
     logger.info("loading vad model")
     vad_model = GenericFunASR(vad_model_dir, max_single_segment_time=SPEECH_LENGTH*1000, device="cpu")
