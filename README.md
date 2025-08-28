@@ -81,7 +81,7 @@ dolphin audio.wav --model small --model_dir /data/models/dolphin/ --lang_sym "zh
 import dolphin
 
 waveform = dolphin.load_audio("audio.wav")
-model = dolphin.load_model("small", "/data/models/dolphin", "cuda")
+model = dolphin.load_model("small", device="cuda")
 result = model(waveform)
 
 # Specify language
