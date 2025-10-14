@@ -1,3 +1,5 @@
 modelscope
 funasr
 espnet
+addict
+pydub
