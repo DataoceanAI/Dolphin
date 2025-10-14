@@ -356,8 +356,9 @@ def cli():
         logging.error(f"Unknown model {model}, Dolphin open source base, small model, please config the correct model.")
         return
 
-    model_dir = args.model_dir if args.model_dir else os.path.expanduser("~/.cache/dolphin")
-    model_dir = Path(model_dir)
+    # model_dir = args.model_dir if args.model_dir else os.path.expanduser("~/.cache/dolphin")
+    # model_dir = Path(model_dir)
+    model_dir = args.model_dir
 
     logger.info("loading asr model")
     device = args.device if args.device else detect_device()
