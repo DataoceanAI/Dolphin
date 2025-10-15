@@ -86,6 +86,7 @@ class DolphinSpeech2Text(Speech2Text):
         quantize_dtype: str = "qint8",
         task_sym: str = "<asr>",
         predict_time: bool = True,
+        partial_ar: bool = False,
         **kwargs,
     ):
 
@@ -198,6 +199,8 @@ class DolphinSpeech2Text(Speech2Text):
 
         self.task_sym = task_sym
         self.predict_time = predict_time
+
+        self.partial_ar = partial_ar
 
     @staticmethod
     @typechecked
