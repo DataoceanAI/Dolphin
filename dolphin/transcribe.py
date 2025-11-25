@@ -27,6 +27,11 @@ from distutils.util import strtobool
 from typing import Union, Optional, Tuple, List
 
 import torch
+try:
+    import torch_npu
+    torch_npu_is_available = True
+except:
+    torch_npu_is_available = False
 import modelscope
 from modelscope.models.audio.funasr.model import GenericFunASR
 
@@ -111,6 +116,8 @@ def detect_device():
         device = "cuda"
     elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         device = "mps"
+    elif torch_npu_is_available and torch_npu.npu.is_available():
+        device = "npu"
     else:
         device = "cpu"
 
