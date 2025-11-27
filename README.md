@@ -58,6 +58,18 @@ There are 4 models in Dolphin, and 2 of them are available now. See details in [
 
 Dolphin supports 40 Eastern languages and 22 Chinese dialects. For a complete list of supported languages, see [languages.md](./languages.md).
 
+## Supported Devices
+
+| Device Type | Support Status |
+|:-------------:|:----------------:|
+|**CUDA**|✅Supported|
+|**MPS (Apple)**|✅Supported|
+|**Ascend NPU (Huawei)**|✅Supported|
+|**CPU**|✅Supported|
+
+To run Dolphin on Ascend NPU, you need to install the corresponding `torch_npu` package and  configure the environment `ASCEND_RT_VISIBLE_DEVICES`. The tested configuration is: `CANN==8.0.1`, `torch==2.2.0`, `torch_npu==2.2.0`. With this setup, the model has been verified to run inference correctly on the Ascend NPU.
+
+
 ## Usage
 
 ### Command-line usage
