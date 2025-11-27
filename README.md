@@ -63,6 +63,7 @@ Dolphin supports 40 Eastern languages and 22 Chinese dialects. For a complete li
 | Device Type | Support Status |
 |:-------------:|:----------------:|
 |**CUDA**|✅Supported|
+|**MPS (Apple)**|✅Supported|
 |**Ascend NPU (Huawei)**|✅Supported|
 |**CPU**|✅Supported|
 
