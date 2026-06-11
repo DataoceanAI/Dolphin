@@ -59,7 +59,7 @@ Available Dolphin models are listed below. See details in [Dolphin](https://arxi
 | large  |   1.7B   |             |
 | [base.cn](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-base) | 0.1 B | ✅ |
 | [base.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-base-streaming) | 0.1 B | ✅ |
-| [small.cn](https://modelscope.cn/models/DataoceanAI/dolphi-cn-dialect-small) | 0.4 B | ✅ |
+| [small.cn](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small) | 0.4 B | ✅ |
 | [small.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-streaming) | 0.4 B | ✅ |
 | [small.cn.prompt](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-prompt) | 0.4 B | ✅ |
 

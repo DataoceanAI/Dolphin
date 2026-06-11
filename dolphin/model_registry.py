@@ -17,7 +17,7 @@ MODELS = {
         "sha256": "62e4c11fe1e0e42bd34e444172c5a05e792c4b5a03750f794fa3206fc0649cd7"
     },
     "small.cn": {
-        "model_id": "DataoceanAI/dolphi-cn-dialect-small",
+        "model_id": "DataoceanAI/dolphin-cn-dialect-small",
         "sha256": "1cee2b8d2133cabb36567625a832d4033569e27eaf5f98df9be1139ec6068bbb",
     },
     "small.cn.streaming": {
