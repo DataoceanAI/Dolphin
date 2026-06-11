@@ -42,14 +42,14 @@ pip install -U dataoceanai-dolphin
 
 Alternatively, it can also be installed from the source:
 ```shell
-pip install git+https://github.com/SpeechOceanTech/Dolphin.git 
+pip install git+https://github.com/DataoceanAI/Dolphin.git
 ```
 
 ## Available Models and Languages
 
 ### Models
 
-There are 8 models in Dolphin, and 6 of them are available now. See details in [Dolphin](https://arxiv.org/abs/2503.20212) and [Dolphin-CN-Dialect](https://arxiv.org/abs/2605.08961).
+Available Dolphin models are listed below. See details in [Dolphin](https://arxiv.org/abs/2503.20212) and [Dolphin-CN-Dialect](https://arxiv.org/abs/2605.08961).
 
 |  Model  | Parameters |Publicly Available |
 |:------:|:----------:|:------------------:|
@@ -58,8 +58,8 @@ There are 8 models in Dolphin, and 6 of them are available now. See details in [
 | medium |   0.9 B    |            |
 | large  |   1.7B   |             |
 | [base.cn](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-base) | 0.1 B | ✅ |
-| [base.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-prompt) | 0.1 B | ✅ |
-| [small.cn](https://modelscope.cn/models/DataoceanAI/dolphi-cn-dialect-small) | 0.4 B | ✅ |
+| [base.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-base-streaming) | 0.1 B | ✅ |
+| [small.cn](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small) | 0.4 B | ✅ |
 | [small.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-streaming) | 0.4 B | ✅ |
 | [small.cn.prompt](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-prompt) | 0.4 B | ✅ |
 
@@ -75,11 +75,26 @@ Dolphin supports 40 Eastern languages and 22 Chinese dialects. For a complete li
 # default model:small
 dolphin audio.wav
 
+# Write plain text output to a file
+dolphin audio.wav --output result.txt
+
+# Write structured output with metadata
+dolphin audio.wav --output result.json --output_format json
+
+# Write subtitle output
+dolphin audio.wav --output result.srt --output_format srt
+
 # Download model and specify the model path
 dolphin audio.wav --model small.cn
 
 # Specify language and region
 dolphin audio.wav --model small.cn --lang_sym "zh" --region_sym "CN"
+
+# Detect language and region only. This uses the Dolphin ASR model's built-in
+# language identification head; this package does not provide a separate
+# lightweight LID-only model.
+dolphin audio.wav --model small.cn --task detect_language
+dolphin long_audio.wav --model small.cn --task detect_language --lid_duration 30
 
 # Specify the hotwords file with Encoder-biased method
 dolphin audio.wav --model small.cn --hotword_list_path hotwords.txt --use_deep_biasing true
@@ -90,7 +105,42 @@ dolphin audio.wav --model small.cn.prompt --hotword_list_path hotwords.txt --use
 # predict word timestamp
 dolphin audio.wav --model small.cn.prompt --word_timestamp true
 
+# Remove punctuation from transcription text
+dolphin audio.wav --model small.cn --remove_punctuation true
+
 ```
+
+### Experimental streaming demo
+
+For Chinese dialect streaming models, the repository provides an experimental
+cache-level streaming demo. It drives `forward_encoder_chunk` with encoder
+caches and prints CTC partial results as each chunk is decoded. `--chunk_size`
+controls the encoder streaming chunk size. CTC endpointing is enabled by
+default, so a long silence or long utterance automatically finalizes the
+current segment:
+
+```shell
+python examples/streaming_demo.py audio.wav --model small.cn.streaming --device cuda --chunk_size 16 --final_rescore attention
+```
+
+For timestamped partial lines or CPU smoke tests:
+
+```shell
+python examples/streaming_demo.py audio.wav --model base.cn.streaming --device cpu --chunk_size 16 --emit line --max_chunks 2
+```
+
+To stream from your microphone, install the optional recorder dependency and
+run:
+
+```shell
+python -m pip install sounddevice
+python examples/microphone_streaming_demo.py --model small.cn.streaming --device cuda --chunk_size 16 --final_rescore attention
+```
+
+Endpoint defaults follow common CTC streaming behavior: 5s silence before any
+decoded text, 1s silence after decoded text, or 20s maximum utterance length.
+Use `--disable_endpoint` to turn this off, or tune
+`--endpoint_rule2_min_trailing_silence_ms` for faster/slower segment finals.
 
 ### Python usage
 
@@ -104,9 +154,17 @@ model = dolphin.load_model(model_name, device="cuda")
 result = transcribe(model, 'audio.wav')
 print(result.text)
 
+# Detect language and region only
+language, region = dolphin.detect_language(model, 'audio.wav')
+print(language, region)
+
 # Specify language
 result = transcribe(model, 'audio.wav', lang_sym="zh")
 print(result.text)
+
+# Remove punctuation from transcription text
+result = transcribe(model, 'audio.wav', remove_punctuation=True)
+print(result.text_nospecial)
 
 # Specify language and region and encoder-biased hotwords
 result = transcribe(model, 'audio.wav', lang_sym="zh", region_sym="CN", hotwords=['诺香丹青牌科研胶囊'], use_deep_biasing=True, use_two_stage_filter=True)
@@ -129,7 +187,6 @@ Thanks to the following excellent open-source works:
 - [Espnet](https://github.com/espnet/espnet)
 - [Wenet](https://github.com/wenet-e2e/wenet)
 - [FunASR](https://github.com/modelscope/FunASR)
-- [FireRedASR2S](https://github.com/FireRedTeam/FireRedASR2S)
 
 ## License
 

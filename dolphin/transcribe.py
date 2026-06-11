@@ -2,6 +2,9 @@
 
 import logging
 import warnings
+import json
+import re
+import unicodedata
 
 LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
@@ -27,6 +30,7 @@ from typing import Union, Optional, Tuple, List, Dict, Any
 
 import torch
 import torch.nn as nn
+import torchaudio
 import modelscope
 from modelscope.models.audio.funasr.model import GenericFunASR
 
@@ -66,6 +70,9 @@ def parser_args() -> Namespace:
     parser.add_argument("--beam_size", type=int, default=10, help="number of beams in beam search (default: 10)")
     parser.add_argument("--decoding_method", type=str, default="attention_rescoring",
                         help="decoding methods, supports: attention, attention_rescoring (default: attention_rescoring)")
+    parser.add_argument("--decoding_chunk_size", type=int, default=-1, help="decoding chunk size for streaming encoder simulation (default: -1)")
+    parser.add_argument("--num_decoding_left_chunks", type=int, default=-1, help="number of left chunks for streaming encoder simulation (default: -1)")
+    parser.add_argument("--simulate_streaming", type=str2bool, default=False, help="simulate streaming encoder decoding (default: false)")
     parser.add_argument("--maxlenratio", type=float, default=0.0, help="deprecated, Input length ratio to obtain max output length (default: 0.0)")
     parser.add_argument("--padding_speech", type=str2bool, default=False, help="deprecated, whether padding speech to 30 seconds (default: false)")
     parser.add_argument("--normalize_length", type=str2bool, default=False, help="deprecated, whether to normalize length (default: false)")
@@ -75,6 +82,23 @@ def parser_args() -> Namespace:
     parser.add_argument("--use_two_stage_filter", type=str2bool, default=False, help="use two-stage filtering for hotwords (default: false)")
     parser.add_argument("--use_prompt_hotword", type=str2bool, default=False, help="use prompt-based hotword (default: false)")
     parser.add_argument("--prompt_filter_threshold", type=float, default=-2.0, help="filter threshold for prompt hotwords (default: -2.0)")
+    parser.add_argument("--remove_punctuation", type=str2bool, default=False, help="remove punctuation from transcription text output (default: false)")
+    parser.add_argument("--lid_duration", type=float, default=SPEECH_LENGTH, help="seconds of audio to use for language detection; set 0 to use full audio (default: 30)")
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="transcribe",
+        choices=("transcribe", "detect_language"),
+        help="task to run: transcribe or detect_language (default: transcribe)",
+    )
+    parser.add_argument("--output", type=Path, default=None, help="write transcription output to file")
+    parser.add_argument(
+        "--output_format",
+        type=str,
+        default="txt",
+        choices=("txt", "json", "srt"),
+        help="output format for stdout or --output (default: txt)",
+    )
 
     args = parser.parse_args()
     return args
@@ -254,6 +278,48 @@ def validate_lang_region(lang_sym: str, region_sym: str):
     return True
 
 
+def _remove_punctuation(text: str) -> str:
+    return "".join(ch for ch in text if not unicodedata.category(ch).startswith("P"))
+
+
+def _remove_punctuation_preserving_special_tokens(text: str) -> str:
+    parts = re.split(r"(<[^>]+>)", text)
+    return "".join(
+        part if part.startswith("<") and part.endswith(">") else _remove_punctuation(part)
+        for part in parts
+    )
+
+
+def _remove_punctuation_word_timestamps(
+    word_timestamps: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    if word_timestamps is None:
+        return None
+
+    cleaned_timestamps = []
+    for item in word_timestamps:
+        cleaned_word = _remove_punctuation(str(item.get("word", "")))
+        if not cleaned_word:
+            continue
+
+        cleaned_item = dict(item)
+        cleaned_item["word"] = cleaned_word
+        cleaned_timestamps.append(cleaned_item)
+
+    return cleaned_timestamps
+
+
+def _remove_result_punctuation(
+    result: Union[TranscribeResult, TranscribeSegmentResult],
+) -> Union[TranscribeResult, TranscribeSegmentResult]:
+    return dataclasses.replace(
+        result,
+        text=_remove_punctuation_preserving_special_tokens(result.text),
+        text_nospecial=_remove_punctuation(result.text_nospecial),
+        word_timestamps=_remove_punctuation_word_timestamps(result.word_timestamps),
+    )
+
+
 def transcribe_long(
     model: ASRModel,
     audio: str,
@@ -269,6 +335,10 @@ def transcribe_long(
     use_two_stage_filter: bool = False,
     use_prompt_hotword: bool = False,
     prompt_filter_threshold: float = -2.0,
+    remove_punctuation: bool = False,
+    decoding_chunk_size: int = -1,
+    num_decoding_left_chunks: int = -1,
+    simulate_streaming: bool = False,
     **kwargs,
 ) -> List[TranscribeSegmentResult]:
     """
@@ -288,6 +358,9 @@ def transcribe_long(
         use_two_stage_filter: whether use two-stage filtering (default: false)
         use_prompt_hotword: whether use prompt-based hotword (default: false)
         prompt_filter_threshold: filter threshold for prompt hotwords (default: -2.0)
+        decoding_chunk_size: decoding chunk size for streaming encoder simulation (default: -1)
+        num_decoding_left_chunks: number of left chunks for streaming encoder simulation (default: -1)
+        simulate_streaming: whether simulate streaming encoder decoding (default: false)
 
     Returns:
         List[TranscribeSegmentResult]
@@ -382,6 +455,9 @@ def transcribe_long(
             speech=batch["feats"],
             speech_lengths=batch["feats_lengths"],
             beam_size=beam_size,
+            decoding_chunk_size=decoding_chunk_size,
+            num_decoding_left_chunks=num_decoding_left_chunks,
+            simulate_streaming=simulate_streaming,
             infos=decoding_infos
         )
         tokens = ret[decoding_method][0].tokens
@@ -401,6 +477,8 @@ def transcribe_long(
             region=region,
             word_timestamps=word_ts,
         )
+        if remove_punctuation:
+            result = _remove_result_punctuation(result)
 
         st = seconds_to_hms(s/1000)
         et = seconds_to_hms(e/1000)
@@ -553,10 +631,45 @@ def _filter_prompt_tokens(tokens: List[int], tokenizer: BaseTokenizer) -> Tuple[
 
     return hotwords_text, tokens
 
-def detect_language(model: ASRModel, audio: str) -> Tuple[str, str]:
+def _limit_audio_duration(
+    audio: Union[str, Path, torch.Tensor],
+    max_duration: Optional[float] = SPEECH_LENGTH,
+) -> Union[str, Path, torch.Tensor]:
+    if max_duration is None or max_duration <= 0:
+        return audio
+
+    if isinstance(audio, torch.Tensor):
+        max_samples = int(max_duration * 16000)
+        return audio[..., :max_samples]
+
+    info = torchaudio.info(str(audio))
+    max_frames = int(max_duration * info.sample_rate)
+    if info.num_frames > 0 and info.num_frames <= max_frames:
+        return audio
+
+    waveform, sample_rate = torchaudio.load(str(audio), num_frames=max_frames)
+    if waveform.size(0) != 1:
+        waveform = waveform[0, :].unsqueeze(0)
+
+    if sample_rate != 16000:
+        waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)(waveform)
+
+    return waveform
+
+
+def detect_language(
+    model: ASRModel,
+    audio: Union[str, Path, torch.Tensor],
+    max_duration: Optional[float] = SPEECH_LENGTH,
+) -> Tuple[str, str]:
     """
     Detect language and dialect.
+
+    Language detection only needs a short audio sample. By default this uses
+    the first ``SPEECH_LENGTH`` seconds to keep long-audio detection fast.
+    Pass ``max_duration=None`` or a non-positive value to use the full audio.
     """
+    audio = _limit_audio_duration(audio, max_duration)
     batch = extract_feats([audio], model.model_configs)
     batch["feats"] = batch["feats"].to(model.device)
     batch["feats_lengths"] = batch["feats_lengths"].to(model.device)
@@ -568,6 +681,79 @@ def detect_language(model: ASRModel, audio: str) -> Tuple[str, str]:
     dialect = dialect[1:-1]
 
     return (lang, dialect)
+
+
+def _format_cli_output(
+    result: Union[TranscribeResult, List[TranscribeSegmentResult]],
+    output_format: str = "txt",
+) -> str:
+    if output_format == "json":
+        if isinstance(result, list):
+            payload = [dataclasses.asdict(item) for item in result]
+        else:
+            payload = dataclasses.asdict(result)
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    if output_format == "srt":
+        return _format_srt_output(result)
+
+    if isinstance(result, list):
+        return "\n".join(item.text_nospecial for item in result)
+
+    return result.text_nospecial
+
+
+def _seconds_to_srt_time(seconds: float) -> str:
+    total_ms = max(0, int(round(seconds * 1000)))
+    hours = total_ms // 3600000
+    total_ms %= 3600000
+    minutes = total_ms // 60000
+    total_ms %= 60000
+    secs = total_ms // 1000
+    millis = total_ms % 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def _format_srt_output(result: Union[TranscribeResult, List[TranscribeSegmentResult]]) -> str:
+    if isinstance(result, list):
+        cues = [
+            (segment.start, segment.end, segment.text_nospecial)
+            for segment in result
+            if segment.text_nospecial
+        ]
+    else:
+        timestamps = result.word_timestamps or []
+        if timestamps:
+            start = float(timestamps[0].get("start", 0.0))
+            end = float(timestamps[-1].get("end", start))
+        else:
+            start = 0.0
+            end = 0.0
+        cues = [(start, end, result.text_nospecial)] if result.text_nospecial else []
+
+    blocks = []
+    for index, (start, end, text) in enumerate(cues, start=1):
+        blocks.append(
+            f"{index}\n"
+            f"{_seconds_to_srt_time(start)} --> {_seconds_to_srt_time(end)}\n"
+            f"{text}"
+        )
+
+    return "\n\n".join(blocks)
+
+
+def _emit_cli_output(
+    result: Union[TranscribeResult, List[TranscribeSegmentResult]],
+    output_format: str,
+    output: Optional[Path],
+):
+    text = _format_cli_output(result, output_format)
+    if output is None:
+        print(text)
+        return
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text + "\n", encoding="utf-8")
 
 
 def transcribe(
@@ -585,6 +771,10 @@ def transcribe(
     use_two_stage_filter: bool = False,
     use_prompt_hotword: bool = False,
     prompt_filter_threshold: float = -4.0,
+    remove_punctuation: bool = False,
+    decoding_chunk_size: int = -1,
+    num_decoding_left_chunks: int = -1,
+    simulate_streaming: bool = False,
     **kwargs,
 ) -> TranscribeResult:
     """
@@ -604,6 +794,9 @@ def transcribe(
         use_two_stage_filter: whether use two-stage filtering (default: false)
         use_prompt_hotword: whether use prompt-based hotword (default: false)
         prompt_filter_threshold: filter threshold for prompt hotwords (default: -4.0)
+        decoding_chunk_size: decoding chunk size for streaming encoder simulation (default: -1)
+        num_decoding_left_chunks: number of left chunks for streaming encoder simulation (default: -1)
+        simulate_streaming: whether simulate streaming encoder decoding (default: false)
 
     Returns:
         TranscribeResult
@@ -684,6 +877,9 @@ def transcribe(
         speech=batch["feats"],
         speech_lengths=batch["feats_lengths"],
         beam_size=beam_size,
+        decoding_chunk_size=decoding_chunk_size,
+        num_decoding_left_chunks=num_decoding_left_chunks,
+        simulate_streaming=simulate_streaming,
         infos=decoding_infos
     )
 
@@ -704,8 +900,10 @@ def transcribe(
         region=region,
         word_timestamps=word_ts,
     )
+    if remove_punctuation:
+        result = _remove_result_punctuation(result)
 
-    logger.info(f"decode result, language: {result.language}, region: {result.region}, text: {result.text_nospecial}  Timestamp: {word_ts}")
+    logger.info(f"decode result, language: {result.language}, region: {result.region}, text: {result.text_nospecial}  Timestamp: {result.word_timestamps}")
     return result
 
 
@@ -725,6 +923,11 @@ def cli():
     model_instance = load_model(model, model_dir, device)
     logger.info(f"model loaded successfuly, device: {device}")
 
+    if args.task == "detect_language":
+        lang, region = detect_language(model_instance, args.audio, max_duration=args.lid_duration)
+        print(f"{lang}\t{region}")
+        return
+
     # Parse hotwords
     hotwords = _parse_hotwords(args.hotword_str, args.hotword_list_path)
 
@@ -740,13 +943,18 @@ def cli():
         "padding_speech": args.padding_speech,
         "decoding_method": args.decoding_method,
         "beam_size": args.beam_size,
+        "decoding_chunk_size": args.decoding_chunk_size,
+        "num_decoding_left_chunks": args.num_decoding_left_chunks,
+        "simulate_streaming": args.simulate_streaming,
         "hotwords": hotwords,
         "use_deep_biasing": args.use_deep_biasing,
         "use_two_stage_filter": args.use_two_stage_filter,
         "use_prompt_hotword": args.use_prompt_hotword,
         "prompt_filter_threshold": args.prompt_filter_threshold,
+        "remove_punctuation": args.remove_punctuation,
     }
-    transcribe_fn(**transcribe_params)
+    result = transcribe_fn(**transcribe_params)
+    _emit_cli_output(result, args.output_format, args.output)
 
 
 if __name__ == "__main__":
