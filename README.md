@@ -42,14 +42,14 @@ pip install -U dataoceanai-dolphin
 
 Alternatively, it can also be installed from the source:
 ```shell
-pip install git+https://github.com/SpeechOceanTech/Dolphin.git 
+pip install git+https://github.com/DataoceanAI/Dolphin.git
 ```
 
 ## Available Models and Languages
 
 ### Models
 
-There are 8 models in Dolphin, and 6 of them are available now. See details in [Dolphin](https://arxiv.org/abs/2503.20212) and [Dolphin-CN-Dialect](https://arxiv.org/abs/2605.08961).
+Available Dolphin models are listed below. See details in [Dolphin](https://arxiv.org/abs/2503.20212) and [Dolphin-CN-Dialect](https://arxiv.org/abs/2605.08961).
 
 |  Model  | Parameters |Publicly Available |
 |:------:|:----------:|:------------------:|
@@ -58,7 +58,7 @@ There are 8 models in Dolphin, and 6 of them are available now. See details in [
 | medium |   0.9 B    |            |
 | large  |   1.7B   |             |
 | [base.cn](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-base) | 0.1 B | ✅ |
-| [base.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-prompt) | 0.1 B | ✅ |
+| [base.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-base-streaming) | 0.1 B | ✅ |
 | [small.cn](https://modelscope.cn/models/DataoceanAI/dolphi-cn-dialect-small) | 0.4 B | ✅ |
 | [small.cn.streaming](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-streaming) | 0.4 B | ✅ |
 | [small.cn.prompt](https://modelscope.cn/models/DataoceanAI/dolphin-cn-dialect-small-prompt) | 0.4 B | ✅ |
