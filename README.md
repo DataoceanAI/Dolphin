@@ -75,6 +75,15 @@ Dolphin supports 40 Eastern languages and 22 Chinese dialects. For a complete li
 # default model:small
 dolphin audio.wav
 
+# Write plain text output to a file
+dolphin audio.wav --output result.txt
+
+# Write structured output with metadata
+dolphin audio.wav --output result.json --output_format json
+
+# Write subtitle output
+dolphin audio.wav --output result.srt --output_format srt
+
 # Download model and specify the model path
 dolphin audio.wav --model small.cn
 

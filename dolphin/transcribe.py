@@ -2,6 +2,7 @@
 
 import logging
 import warnings
+import json
 
 LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
@@ -75,6 +76,14 @@ def parser_args() -> Namespace:
     parser.add_argument("--use_two_stage_filter", type=str2bool, default=False, help="use two-stage filtering for hotwords (default: false)")
     parser.add_argument("--use_prompt_hotword", type=str2bool, default=False, help="use prompt-based hotword (default: false)")
     parser.add_argument("--prompt_filter_threshold", type=float, default=-2.0, help="filter threshold for prompt hotwords (default: -2.0)")
+    parser.add_argument("--output", type=Path, default=None, help="write transcription output to file")
+    parser.add_argument(
+        "--output_format",
+        type=str,
+        default="txt",
+        choices=("txt", "json", "srt"),
+        help="output format for stdout or --output (default: txt)",
+    )
 
     args = parser.parse_args()
     return args
@@ -570,6 +579,79 @@ def detect_language(model: ASRModel, audio: str) -> Tuple[str, str]:
     return (lang, dialect)
 
 
+def _format_cli_output(
+    result: Union[TranscribeResult, List[TranscribeSegmentResult]],
+    output_format: str = "txt",
+) -> str:
+    if output_format == "json":
+        if isinstance(result, list):
+            payload = [dataclasses.asdict(item) for item in result]
+        else:
+            payload = dataclasses.asdict(result)
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    if output_format == "srt":
+        return _format_srt_output(result)
+
+    if isinstance(result, list):
+        return "\n".join(item.text_nospecial for item in result)
+
+    return result.text_nospecial
+
+
+def _seconds_to_srt_time(seconds: float) -> str:
+    total_ms = max(0, int(round(seconds * 1000)))
+    hours = total_ms // 3600000
+    total_ms %= 3600000
+    minutes = total_ms // 60000
+    total_ms %= 60000
+    secs = total_ms // 1000
+    millis = total_ms % 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def _format_srt_output(result: Union[TranscribeResult, List[TranscribeSegmentResult]]) -> str:
+    if isinstance(result, list):
+        cues = [
+            (segment.start, segment.end, segment.text_nospecial)
+            for segment in result
+            if segment.text_nospecial
+        ]
+    else:
+        timestamps = result.word_timestamps or []
+        if timestamps:
+            start = float(timestamps[0].get("start", 0.0))
+            end = float(timestamps[-1].get("end", start))
+        else:
+            start = 0.0
+            end = 0.0
+        cues = [(start, end, result.text_nospecial)] if result.text_nospecial else []
+
+    blocks = []
+    for index, (start, end, text) in enumerate(cues, start=1):
+        blocks.append(
+            f"{index}\n"
+            f"{_seconds_to_srt_time(start)} --> {_seconds_to_srt_time(end)}\n"
+            f"{text}"
+        )
+
+    return "\n\n".join(blocks)
+
+
+def _emit_cli_output(
+    result: Union[TranscribeResult, List[TranscribeSegmentResult]],
+    output_format: str,
+    output: Optional[Path],
+):
+    text = _format_cli_output(result, output_format)
+    if output is None:
+        print(text)
+        return
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text + "\n", encoding="utf-8")
+
+
 def transcribe(
     model: ASRModel,
     audio: str,
@@ -746,7 +828,8 @@ def cli():
         "use_prompt_hotword": args.use_prompt_hotword,
         "prompt_filter_threshold": args.prompt_filter_threshold,
     }
-    transcribe_fn(**transcribe_params)
+    result = transcribe_fn(**transcribe_params)
+    _emit_cli_output(result, args.output_format, args.output)
 
 
 if __name__ == "__main__":
