@@ -3,6 +3,8 @@
 import logging
 import warnings
 import json
+import re
+import unicodedata
 
 LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
@@ -77,6 +79,7 @@ def parser_args() -> Namespace:
     parser.add_argument("--use_two_stage_filter", type=str2bool, default=False, help="use two-stage filtering for hotwords (default: false)")
     parser.add_argument("--use_prompt_hotword", type=str2bool, default=False, help="use prompt-based hotword (default: false)")
     parser.add_argument("--prompt_filter_threshold", type=float, default=-2.0, help="filter threshold for prompt hotwords (default: -2.0)")
+    parser.add_argument("--remove_punctuation", type=str2bool, default=False, help="remove punctuation from transcription text output (default: false)")
     parser.add_argument("--lid_duration", type=float, default=SPEECH_LENGTH, help="seconds of audio to use for language detection; set 0 to use full audio (default: 30)")
     parser.add_argument(
         "--task",
@@ -272,6 +275,48 @@ def validate_lang_region(lang_sym: str, region_sym: str):
     return True
 
 
+def _remove_punctuation(text: str) -> str:
+    return "".join(ch for ch in text if not unicodedata.category(ch).startswith("P"))
+
+
+def _remove_punctuation_preserving_special_tokens(text: str) -> str:
+    parts = re.split(r"(<[^>]+>)", text)
+    return "".join(
+        part if part.startswith("<") and part.endswith(">") else _remove_punctuation(part)
+        for part in parts
+    )
+
+
+def _remove_punctuation_word_timestamps(
+    word_timestamps: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    if word_timestamps is None:
+        return None
+
+    cleaned_timestamps = []
+    for item in word_timestamps:
+        cleaned_word = _remove_punctuation(str(item.get("word", "")))
+        if not cleaned_word:
+            continue
+
+        cleaned_item = dict(item)
+        cleaned_item["word"] = cleaned_word
+        cleaned_timestamps.append(cleaned_item)
+
+    return cleaned_timestamps
+
+
+def _remove_result_punctuation(
+    result: Union[TranscribeResult, TranscribeSegmentResult],
+) -> Union[TranscribeResult, TranscribeSegmentResult]:
+    return dataclasses.replace(
+        result,
+        text=_remove_punctuation_preserving_special_tokens(result.text),
+        text_nospecial=_remove_punctuation(result.text_nospecial),
+        word_timestamps=_remove_punctuation_word_timestamps(result.word_timestamps),
+    )
+
+
 def transcribe_long(
     model: ASRModel,
     audio: str,
@@ -287,6 +332,7 @@ def transcribe_long(
     use_two_stage_filter: bool = False,
     use_prompt_hotword: bool = False,
     prompt_filter_threshold: float = -2.0,
+    remove_punctuation: bool = False,
     **kwargs,
 ) -> List[TranscribeSegmentResult]:
     """
@@ -419,6 +465,8 @@ def transcribe_long(
             region=region,
             word_timestamps=word_ts,
         )
+        if remove_punctuation:
+            result = _remove_result_punctuation(result)
 
         st = seconds_to_hms(s/1000)
         et = seconds_to_hms(e/1000)
@@ -711,6 +759,7 @@ def transcribe(
     use_two_stage_filter: bool = False,
     use_prompt_hotword: bool = False,
     prompt_filter_threshold: float = -4.0,
+    remove_punctuation: bool = False,
     **kwargs,
 ) -> TranscribeResult:
     """
@@ -830,8 +879,10 @@ def transcribe(
         region=region,
         word_timestamps=word_ts,
     )
+    if remove_punctuation:
+        result = _remove_result_punctuation(result)
 
-    logger.info(f"decode result, language: {result.language}, region: {result.region}, text: {result.text_nospecial}  Timestamp: {word_ts}")
+    logger.info(f"decode result, language: {result.language}, region: {result.region}, text: {result.text_nospecial}  Timestamp: {result.word_timestamps}")
     return result
 
 
@@ -876,6 +927,7 @@ def cli():
         "use_two_stage_filter": args.use_two_stage_filter,
         "use_prompt_hotword": args.use_prompt_hotword,
         "prompt_filter_threshold": args.prompt_filter_threshold,
+        "remove_punctuation": args.remove_punctuation,
     }
     result = transcribe_fn(**transcribe_params)
     _emit_cli_output(result, args.output_format, args.output)

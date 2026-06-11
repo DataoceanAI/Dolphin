@@ -105,6 +105,9 @@ dolphin audio.wav --model small.cn.prompt --hotword_list_path hotwords.txt --use
 # predict word timestamp
 dolphin audio.wav --model small.cn.prompt --word_timestamp true
 
+# Remove punctuation from transcription text
+dolphin audio.wav --model small.cn --remove_punctuation true
+
 ```
 
 ### Python usage
@@ -126,6 +129,10 @@ print(language, region)
 # Specify language
 result = transcribe(model, 'audio.wav', lang_sym="zh")
 print(result.text)
+
+# Remove punctuation from transcription text
+result = transcribe(model, 'audio.wav', remove_punctuation=True)
+print(result.text_nospecial)
 
 # Specify language and region and encoder-biased hotwords
 result = transcribe(model, 'audio.wav', lang_sym="zh", region_sym="CN", hotwords=['诺香丹青牌科研胶囊'], use_deep_biasing=True, use_two_stage_filter=True)
