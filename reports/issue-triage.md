@@ -13,7 +13,7 @@ This record tracks issues reviewed during the Codex pass so future work does not
 | #80 | Done | Added CLI `--output` and `--output_format {txt,json,srt}`. |
 | #92 | Done | Added CLI/API punctuation removal via `--remove_punctuation` and `remove_punctuation=True`. |
 | #93 | Done | Added `dolphin.detect_language(...)`, `--task detect_language`, and `--lid_duration`. |
-| #106 | Done | Added experimental `examples/streaming_demo.py`, streaming decode options, and SDPA chunk mask support for `small.cn.streaming`. |
+| #106 | Done | Added cache-level file streaming and microphone demos, streaming decode options, and SDPA chunk mask support for `small.cn.streaming`. |
 
 ## In Progress
 

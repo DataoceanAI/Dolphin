@@ -113,18 +113,34 @@ dolphin audio.wav --model small.cn --remove_punctuation true
 ### Experimental streaming demo
 
 For Chinese dialect streaming models, the repository provides an experimental
-file-streaming demo. It reads an existing audio file in chunks and prints each
-chunk result as soon as it is decoded:
+cache-level streaming demo. It drives `forward_encoder_chunk` with encoder
+caches and prints CTC partial results as each chunk is decoded. `--chunk_size`
+controls the encoder streaming chunk size. CTC endpointing is enabled by
+default, so a long silence or long utterance automatically finalizes the
+current segment:
 
 ```shell
-python examples/streaming_demo.py audio.wav --model small.cn.streaming --device cuda
+python examples/streaming_demo.py audio.wav --model small.cn.streaming --device cuda --chunk_size 16 --final_rescore attention
 ```
 
-For CPU smoke tests, limit the number of chunks:
+For timestamped partial lines or CPU smoke tests:
 
 ```shell
-python examples/streaming_demo.py audio.wav --model base.cn.streaming --device cpu --chunk_duration 4 --max_chunks 2
+python examples/streaming_demo.py audio.wav --model base.cn.streaming --device cpu --chunk_size 16 --emit line --max_chunks 2
 ```
+
+To stream from your microphone, install the optional recorder dependency and
+run:
+
+```shell
+python -m pip install sounddevice
+python examples/microphone_streaming_demo.py --model small.cn.streaming --device cuda --chunk_size 16 --final_rescore attention
+```
+
+Endpoint defaults follow common CTC streaming behavior: 5s silence before any
+decoded text, 1s silence after decoded text, or 20s maximum utterance length.
+Use `--disable_endpoint` to turn this off, or tune
+`--endpoint_rule2_min_trailing_silence_ms` for faster/slower segment finals.
 
 ### Python usage
 
@@ -171,7 +187,6 @@ Thanks to the following excellent open-source works:
 - [Espnet](https://github.com/espnet/espnet)
 - [Wenet](https://github.com/wenet-e2e/wenet)
 - [FunASR](https://github.com/modelscope/FunASR)
-- [FireRedASR2S](https://github.com/FireRedTeam/FireRedASR2S)
 
 ## License
 
