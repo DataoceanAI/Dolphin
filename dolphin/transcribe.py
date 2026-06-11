@@ -28,6 +28,7 @@ from typing import Union, Optional, Tuple, List, Dict, Any
 
 import torch
 import torch.nn as nn
+import torchaudio
 import modelscope
 from modelscope.models.audio.funasr.model import GenericFunASR
 
@@ -76,6 +77,14 @@ def parser_args() -> Namespace:
     parser.add_argument("--use_two_stage_filter", type=str2bool, default=False, help="use two-stage filtering for hotwords (default: false)")
     parser.add_argument("--use_prompt_hotword", type=str2bool, default=False, help="use prompt-based hotword (default: false)")
     parser.add_argument("--prompt_filter_threshold", type=float, default=-2.0, help="filter threshold for prompt hotwords (default: -2.0)")
+    parser.add_argument("--lid_duration", type=float, default=SPEECH_LENGTH, help="seconds of audio to use for language detection; set 0 to use full audio (default: 30)")
+    parser.add_argument(
+        "--task",
+        type=str,
+        default="transcribe",
+        choices=("transcribe", "detect_language"),
+        help="task to run: transcribe or detect_language (default: transcribe)",
+    )
     parser.add_argument("--output", type=Path, default=None, help="write transcription output to file")
     parser.add_argument(
         "--output_format",
@@ -562,10 +571,45 @@ def _filter_prompt_tokens(tokens: List[int], tokenizer: BaseTokenizer) -> Tuple[
 
     return hotwords_text, tokens
 
-def detect_language(model: ASRModel, audio: str) -> Tuple[str, str]:
+def _limit_audio_duration(
+    audio: Union[str, Path, torch.Tensor],
+    max_duration: Optional[float] = SPEECH_LENGTH,
+) -> Union[str, Path, torch.Tensor]:
+    if max_duration is None or max_duration <= 0:
+        return audio
+
+    if isinstance(audio, torch.Tensor):
+        max_samples = int(max_duration * 16000)
+        return audio[..., :max_samples]
+
+    info = torchaudio.info(str(audio))
+    max_frames = int(max_duration * info.sample_rate)
+    if info.num_frames > 0 and info.num_frames <= max_frames:
+        return audio
+
+    waveform, sample_rate = torchaudio.load(str(audio), num_frames=max_frames)
+    if waveform.size(0) != 1:
+        waveform = waveform[0, :].unsqueeze(0)
+
+    if sample_rate != 16000:
+        waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)(waveform)
+
+    return waveform
+
+
+def detect_language(
+    model: ASRModel,
+    audio: Union[str, Path, torch.Tensor],
+    max_duration: Optional[float] = SPEECH_LENGTH,
+) -> Tuple[str, str]:
     """
     Detect language and dialect.
+
+    Language detection only needs a short audio sample. By default this uses
+    the first ``SPEECH_LENGTH`` seconds to keep long-audio detection fast.
+    Pass ``max_duration=None`` or a non-positive value to use the full audio.
     """
+    audio = _limit_audio_duration(audio, max_duration)
     batch = extract_feats([audio], model.model_configs)
     batch["feats"] = batch["feats"].to(model.device)
     batch["feats_lengths"] = batch["feats_lengths"].to(model.device)
@@ -806,6 +850,11 @@ def cli():
     logger.info(f"loading asr model, device: {device}")
     model_instance = load_model(model, model_dir, device)
     logger.info(f"model loaded successfuly, device: {device}")
+
+    if args.task == "detect_language":
+        lang, region = detect_language(model_instance, args.audio, max_duration=args.lid_duration)
+        print(f"{lang}\t{region}")
+        return
 
     # Parse hotwords
     hotwords = _parse_hotwords(args.hotword_str, args.hotword_list_path)

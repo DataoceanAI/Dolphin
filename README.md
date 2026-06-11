@@ -90,6 +90,12 @@ dolphin audio.wav --model small.cn
 # Specify language and region
 dolphin audio.wav --model small.cn --lang_sym "zh" --region_sym "CN"
 
+# Detect language and region only. This uses the Dolphin ASR model's built-in
+# language identification head; this package does not provide a separate
+# lightweight LID-only model.
+dolphin audio.wav --model small.cn --task detect_language
+dolphin long_audio.wav --model small.cn --task detect_language --lid_duration 30
+
 # Specify the hotwords file with Encoder-biased method
 dolphin audio.wav --model small.cn --hotword_list_path hotwords.txt --use_deep_biasing true
 
@@ -112,6 +118,10 @@ model = dolphin.load_model(model_name, device="cuda")
 
 result = transcribe(model, 'audio.wav')
 print(result.text)
+
+# Detect language and region only
+language, region = dolphin.detect_language(model, 'audio.wav')
+print(language, region)
 
 # Specify language
 result = transcribe(model, 'audio.wav', lang_sym="zh")
