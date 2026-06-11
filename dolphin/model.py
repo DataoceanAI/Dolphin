@@ -960,11 +960,16 @@ class RelPositionMultiHeadedAttention(MultiHeadedAttention):
 
             return self.forward_attention(v, scores, mask), new_cache
         else:
-            # NOTE(Mddct): we need mask bias, not boolean mask
-            assert mask.dtype != torch.bool
-            mask = mask.unsqueeze(1)
-            # matrix_bd as a mask bias
-            mask = (matrix_bd + mask) / math.sqrt(self.d_k)
+            if mask.size(-1) > 0:
+                # NOTE(Mddct): SDPA needs an attention bias here so the
+                # relative position logits can share the same attn_mask.
+                if mask.dtype == torch.bool:
+                    mask = mask_to_bias(mask, query.dtype)
+                mask = mask.unsqueeze(1)
+                mask = matrix_bd + mask
+            else:
+                mask = matrix_bd
+            mask = mask / math.sqrt(self.d_k)
             output = torch.nn.functional.scaled_dot_product_attention(
                 q_with_bias_u,
                 k,

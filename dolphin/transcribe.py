@@ -70,6 +70,9 @@ def parser_args() -> Namespace:
     parser.add_argument("--beam_size", type=int, default=10, help="number of beams in beam search (default: 10)")
     parser.add_argument("--decoding_method", type=str, default="attention_rescoring",
                         help="decoding methods, supports: attention, attention_rescoring (default: attention_rescoring)")
+    parser.add_argument("--decoding_chunk_size", type=int, default=-1, help="decoding chunk size for streaming encoder simulation (default: -1)")
+    parser.add_argument("--num_decoding_left_chunks", type=int, default=-1, help="number of left chunks for streaming encoder simulation (default: -1)")
+    parser.add_argument("--simulate_streaming", type=str2bool, default=False, help="simulate streaming encoder decoding (default: false)")
     parser.add_argument("--maxlenratio", type=float, default=0.0, help="deprecated, Input length ratio to obtain max output length (default: 0.0)")
     parser.add_argument("--padding_speech", type=str2bool, default=False, help="deprecated, whether padding speech to 30 seconds (default: false)")
     parser.add_argument("--normalize_length", type=str2bool, default=False, help="deprecated, whether to normalize length (default: false)")
@@ -333,6 +336,9 @@ def transcribe_long(
     use_prompt_hotword: bool = False,
     prompt_filter_threshold: float = -2.0,
     remove_punctuation: bool = False,
+    decoding_chunk_size: int = -1,
+    num_decoding_left_chunks: int = -1,
+    simulate_streaming: bool = False,
     **kwargs,
 ) -> List[TranscribeSegmentResult]:
     """
@@ -352,6 +358,9 @@ def transcribe_long(
         use_two_stage_filter: whether use two-stage filtering (default: false)
         use_prompt_hotword: whether use prompt-based hotword (default: false)
         prompt_filter_threshold: filter threshold for prompt hotwords (default: -2.0)
+        decoding_chunk_size: decoding chunk size for streaming encoder simulation (default: -1)
+        num_decoding_left_chunks: number of left chunks for streaming encoder simulation (default: -1)
+        simulate_streaming: whether simulate streaming encoder decoding (default: false)
 
     Returns:
         List[TranscribeSegmentResult]
@@ -446,6 +455,9 @@ def transcribe_long(
             speech=batch["feats"],
             speech_lengths=batch["feats_lengths"],
             beam_size=beam_size,
+            decoding_chunk_size=decoding_chunk_size,
+            num_decoding_left_chunks=num_decoding_left_chunks,
+            simulate_streaming=simulate_streaming,
             infos=decoding_infos
         )
         tokens = ret[decoding_method][0].tokens
@@ -760,6 +772,9 @@ def transcribe(
     use_prompt_hotword: bool = False,
     prompt_filter_threshold: float = -4.0,
     remove_punctuation: bool = False,
+    decoding_chunk_size: int = -1,
+    num_decoding_left_chunks: int = -1,
+    simulate_streaming: bool = False,
     **kwargs,
 ) -> TranscribeResult:
     """
@@ -779,6 +794,9 @@ def transcribe(
         use_two_stage_filter: whether use two-stage filtering (default: false)
         use_prompt_hotword: whether use prompt-based hotword (default: false)
         prompt_filter_threshold: filter threshold for prompt hotwords (default: -4.0)
+        decoding_chunk_size: decoding chunk size for streaming encoder simulation (default: -1)
+        num_decoding_left_chunks: number of left chunks for streaming encoder simulation (default: -1)
+        simulate_streaming: whether simulate streaming encoder decoding (default: false)
 
     Returns:
         TranscribeResult
@@ -859,6 +877,9 @@ def transcribe(
         speech=batch["feats"],
         speech_lengths=batch["feats_lengths"],
         beam_size=beam_size,
+        decoding_chunk_size=decoding_chunk_size,
+        num_decoding_left_chunks=num_decoding_left_chunks,
+        simulate_streaming=simulate_streaming,
         infos=decoding_infos
     )
 
@@ -922,6 +943,9 @@ def cli():
         "padding_speech": args.padding_speech,
         "decoding_method": args.decoding_method,
         "beam_size": args.beam_size,
+        "decoding_chunk_size": args.decoding_chunk_size,
+        "num_decoding_left_chunks": args.num_decoding_left_chunks,
+        "simulate_streaming": args.simulate_streaming,
         "hotwords": hotwords,
         "use_deep_biasing": args.use_deep_biasing,
         "use_two_stage_filter": args.use_two_stage_filter,

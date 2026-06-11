@@ -110,6 +110,22 @@ dolphin audio.wav --model small.cn --remove_punctuation true
 
 ```
 
+### Experimental streaming demo
+
+For Chinese dialect streaming models, the repository provides an experimental
+file-streaming demo. It reads an existing audio file in chunks and prints each
+chunk result as soon as it is decoded:
+
+```shell
+python examples/streaming_demo.py audio.wav --model small.cn.streaming --device cuda
+```
+
+For CPU smoke tests, limit the number of chunks:
+
+```shell
+python examples/streaming_demo.py audio.wav --model base.cn.streaming --device cpu --chunk_duration 4 --max_chunks 2
+```
+
 ### Python usage
 
 ```python
